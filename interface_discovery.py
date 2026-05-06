@@ -38,15 +38,31 @@ logging.basicConfig(level=logging.INFO,
 logger = logging.getLogger(__name__)
 
 
+def is_valid_ethernet_mac(mac: str) -> bool:
+    """Check if a MAC address is a valid 6-byte Ethernet MAC (AA:BB:CC:DD:EE:FF).
+
+    Rejects InfiniBand 20-byte GIDs and other non-Ethernet address formats.
+    """
+    parts = mac.split(":")
+    if len(parts) != 6:
+        return False
+    return all(len(p) == 2 and all(c in "0123456789abcdef" for c in p)
+               for p in parts)
+
+
 def get_interface_mac(interface_name: str) -> Optional[str]:
     """Get MAC address for a network interface."""
     try:
         mac_path = SYSFS_NET_PATH / interface_name / "address"
         if mac_path.exists():
             mac = mac_path.read_text().strip().lower()
-            # Filter out invalid MACs
-            if mac and mac != "00:00:00:00:00:00":
+            if mac and mac != "00:00:00:00:00:00" and is_valid_ethernet_mac(mac):
                 return mac
+            if mac and not is_valid_ethernet_mac(mac):
+                logger.info(
+                    "Skipping non-Ethernet address for %s: %s "
+                    "(expected 6-byte MAC, got %d-byte address)",
+                    interface_name, mac, len(mac.split(":")))
     except Exception as e:
         logger.debug("Failed to read MAC for %s: %s", interface_name, e)
     return None
